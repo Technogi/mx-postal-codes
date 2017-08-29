@@ -8,7 +8,6 @@ import io.vertx.core.json.Json
 import io.vertx.core.json.JsonObject
 import io.vertx.core.logging.LoggerFactory
 import io.vertx.ext.consul.CheckOptions
-import io.vertx.ext.consul.CheckStatus
 import io.vertx.ext.consul.ConsulClient
 import io.vertx.ext.consul.ConsulClientOptions
 import io.vertx.ext.healthchecks.HealthCheckHandler
@@ -17,6 +16,7 @@ import io.vertx.ext.web.Router
 import io.vertx.ext.web.RoutingContext
 import io.vertx.ext.web.handler.ResponseContentTypeHandler
 import io.vertx.kotlin.ext.consul.ServiceOptions
+import java.net.Inet4Address
 import java.net.InetAddress
 import java.util.*
 
@@ -51,8 +51,9 @@ class HttpServer : AbstractVerticle() {
               if (server.failed()) {
                   startFuture?.fail(server.cause())
               }
+              InetAddress.getAllByName("").forEach { it -> println("====${it.hostAddress}") }
               log.info("Server started at port: ${httpServer.actualPort()}")
-              register(InetAddress.getLocalHost().hostAddress, httpServer.actualPort())
+              register(Inet4Address.getLocalHost().hostAddress, httpServer.actualPort())
           }
 
     }
@@ -96,25 +97,32 @@ class HttpServer : AbstractVerticle() {
     }
 
     private fun register(host: String, port: Int) {
+        if (config().containsKey("consul"))
+            registerConsul(config().getJsonObject("consul"), host, port)
 
+
+    }
+
+    private fun registerConsul(config: JsonObject, host: String, port: Int) {
         this.consulClient = ConsulClient
           .create(vertx, ConsulClientOptions()
-            .setHost(config().getString("consul.host", "localhost"))
-          .setPort(config().getInteger("consul.port", 8500)))
+            .setHost(config.getString("host", "localhost"))
+            .setPort(config.getInteger("port", 8500)))
 
         val serviceName = "postal-codes-mx"
-        this.serviceId = "$serviceName-${host.replace(".","-")}_$port"
+        this.serviceId = "$serviceName-${host.replace(".", "-")}_$port"
 
         val options = ServiceOptions()
           .setName(serviceName)
           .setId(serviceId)
           .setTags(Arrays.asList(host, "$port"))
-          .setAddress(host)
+          .setAddress(config.getJsonObject("check").getString("host"))
           .setCheckOptions(CheckOptions()
             .setDeregisterAfter("120s")
-            .setInterval(config().getString("consul.interval","10s"))
-            .setHttp("http://$host:$port/health"))
+            .setInterval(config.getJsonObject("check").getString("interval", "10s"))
+            .setHttp("http://${config.getJsonObject("check").getString("host")}:$port/health"))
 
+        log.info("Registering checkpoint at ${options.checkOptions.http}")
 
         consulClient.registerService(options, { event ->
             if (event.succeeded()) {
@@ -125,6 +133,4 @@ class HttpServer : AbstractVerticle() {
             }
         })
     }
-
-
 }
