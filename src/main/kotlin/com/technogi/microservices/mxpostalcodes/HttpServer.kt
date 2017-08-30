@@ -3,6 +3,7 @@ package com.technogi.microservices.mxpostalcodes
 import io.vertx.core.AbstractVerticle
 import io.vertx.core.Future
 import io.vertx.core.Handler
+import io.vertx.core.http.HttpMethod
 import io.vertx.core.http.HttpServerResponse
 import io.vertx.core.json.Json
 import io.vertx.core.json.JsonObject
@@ -14,10 +15,13 @@ import io.vertx.ext.healthchecks.HealthCheckHandler
 import io.vertx.ext.healthchecks.Status
 import io.vertx.ext.web.Router
 import io.vertx.ext.web.RoutingContext
+import io.vertx.ext.web.handler.CorsHandler
 import io.vertx.ext.web.handler.ResponseContentTypeHandler
 import io.vertx.kotlin.ext.consul.ServiceOptions
+import java.lang.management.ManagementFactory
 import java.net.Inet4Address
 import java.net.InetAddress
+import java.time.LocalTime
 import java.util.*
 
 class HttpServer : AbstractVerticle() {
@@ -38,6 +42,11 @@ class HttpServer : AbstractVerticle() {
         val httpServer = vertx.createHttpServer()
         val router = Router.router(vertx)
 
+        router.route().handler(CorsHandler.create("*")
+          .allowedMethods(setOf(HttpMethod.GET, HttpMethod.OPTIONS))
+          .allowedHeaders(setOf("Access-Control-Allow-Origin", "Access-Control-Allow-Headers", "Origin",
+            "X-Requested-With", "Content-Type", "Accept")))
+
         router.get()
           .handler(ResponseContentTypeHandler.create()).produces("application/json")
 
@@ -53,12 +62,15 @@ class HttpServer : AbstractVerticle() {
               }
               InetAddress.getAllByName("").forEach { it -> println("====${it.hostAddress}") }
               log.info("Server started at port: ${httpServer.actualPort()}")
+              log.info("At ${LocalTime.now()}")
+              log.info("With PID: ${ManagementFactory.getRuntimeMXBean().getName()}")
               register(Inet4Address.getLocalHost().hostAddress, httpServer.actualPort())
           }
 
     }
 
     override fun stop(stopFuture: Future<Void>?) {
+        log.info("Stopping server at ${LocalTime.now()}")
         consulClient.deregisterService(serviceId) { res ->
             if (res.failed()) {
                 log.error("Error de-registering service $serviceId", res.cause())
@@ -111,16 +123,19 @@ class HttpServer : AbstractVerticle() {
 
         val serviceName = "postal-codes-mx"
         this.serviceId = "$serviceName-${host.replace(".", "-")}_$port"
+        val checkHttp = "http://${config.getJsonObject("check").getString("host")}:$port/${config.getJsonObject("check").getString("health", "")}"
 
+        log.info("Registering check on $checkHttp")
         val options = ServiceOptions()
           .setName(serviceName)
           .setId(serviceId)
           .setTags(Arrays.asList(host, "$port"))
           .setAddress(config.getJsonObject("check").getString("host"))
+          .setPort(port)
           .setCheckOptions(CheckOptions()
             .setDeregisterAfter("120s")
             .setInterval(config.getJsonObject("check").getString("interval", "10s"))
-            .setHttp("http://${config.getJsonObject("check").getString("host")}:$port/health"))
+            .setHttp(checkHttp))
 
         log.info("Registering checkpoint at ${options.checkOptions.http}")
 
