@@ -43,41 +43,42 @@ class HttpServer : AbstractVerticle() {
         val router = Router.router(vertx)
 
         router.route().handler(CorsHandler.create("*")
-          .allowedMethods(setOf(HttpMethod.GET, HttpMethod.OPTIONS))
-          .allowedHeaders(setOf("Access-Control-Allow-Origin", "Access-Control-Allow-Headers", "Origin",
-            "X-Requested-With", "Content-Type", "Accept")))
+                .allowedMethods(setOf(HttpMethod.GET, HttpMethod.OPTIONS))
+                .allowedHeaders(setOf("Access-Control-Allow-Origin", "Access-Control-Allow-Headers", "Origin",
+                        "X-Requested-With", "Content-Type", "Accept")))
 
         router.get()
-          .handler(ResponseContentTypeHandler.create()).produces("application/json")
+                .handler(ResponseContentTypeHandler.create()).produces("application/json")
 
         router.get("/").handler { it.response().end(JsonObject().put("service", "mx postal codes").encode()) }
         router.get("/health").handler(health())
         router.get("/:postalCode").handler(getHandler(data))
 
         httpServer
-          .requestHandler { ctx -> router.accept(ctx) }
-          .listen(config().getInteger("http.port", 8080)) { server ->
-              if (server.failed()) {
-                  startFuture?.fail(server.cause())
-              }
-              InetAddress.getAllByName("").forEach { it -> println("====${it.hostAddress}") }
-              log.info("Server started at port: ${httpServer.actualPort()}")
-              log.info("At ${LocalTime.now()}")
-              log.info("With PID: ${ManagementFactory.getRuntimeMXBean().getName()}")
-              register(Inet4Address.getLocalHost().hostAddress, httpServer.actualPort())
-          }
-
+                .requestHandler { ctx -> router.accept(ctx) }
+                .listen(config().getInteger("http.port", 8080)) { server ->
+                    if (server.failed()) {
+                        startFuture?.fail(server.cause())
+                    }
+                    InetAddress.getAllByName("").forEach { it -> println("====${it.hostAddress}") }
+                    log.info("Server started at port: ${httpServer.actualPort()}")
+                    log.info("At ${LocalTime.now()}")
+                    log.info("With PID: ${ManagementFactory.getRuntimeMXBean().getName()}")
+                    register(Inet4Address.getLocalHost().hostAddress, httpServer.actualPort())
+                }
     }
 
     override fun stop(stopFuture: Future<Void>?) {
         log.info("Stopping server at ${LocalTime.now()}")
-        consulClient.deregisterService(serviceId) { res ->
-            if (res.failed()) {
-                log.error("Error de-registering service $serviceId", res.cause())
-                stopFuture?.fail(res.cause())
-            } else {
-                log.info("Service $serviceId de-registered")
-                stopFuture?.complete()
+        if (config().containsKey("consul")) {
+            consulClient.deregisterService(serviceId) { res ->
+                if (res.failed()) {
+                    log.error("Error de-registering service $serviceId", res.cause())
+                    stopFuture?.fail(res.cause())
+                } else {
+                    log.info("Service $serviceId de-registered")
+                    stopFuture?.complete()
+                }
             }
         }
     }
@@ -97,7 +98,7 @@ class HttpServer : AbstractVerticle() {
 
     private fun notFound(response: HttpServerResponse) {
         response.setStatusCode(404).setStatusMessage("Postal Code not found")
-          .end(JsonObject().put("status", 404).put("description", "Postal code not found").encode())
+                .end(JsonObject().put("status", 404).put("description", "Postal code not found").encode())
     }
 
     private fun health(): HealthCheckHandler {
@@ -111,15 +112,13 @@ class HttpServer : AbstractVerticle() {
     private fun register(host: String, port: Int) {
         if (config().containsKey("consul"))
             registerConsul(config().getJsonObject("consul"), host, port)
-
-
     }
 
     private fun registerConsul(config: JsonObject, host: String, port: Int) {
         this.consulClient = ConsulClient
-          .create(vertx, ConsulClientOptions()
-            .setHost(config.getString("host", "localhost"))
-            .setPort(config.getInteger("port", 8500)))
+                .create(vertx, ConsulClientOptions()
+                        .setHost(config.getString("host", "localhost"))
+                        .setPort(config.getInteger("port", 8500)))
 
         val serviceName = "postal-codes-mx"
         this.serviceId = "$serviceName-${host.replace(".", "-")}_$port"
@@ -127,15 +126,15 @@ class HttpServer : AbstractVerticle() {
 
         log.info("Registering check on $checkHttp")
         val options = ServiceOptions()
-          .setName(serviceName)
-          .setId(serviceId)
-          .setTags(Arrays.asList(host, "$port"))
-          .setAddress(config.getJsonObject("check").getString("host"))
-          .setPort(port)
-          .setCheckOptions(CheckOptions()
-            .setDeregisterAfter("120s")
-            .setInterval(config.getJsonObject("check").getString("interval", "10s"))
-            .setHttp(checkHttp))
+                .setName(serviceName)
+                .setId(serviceId)
+                .setTags(Arrays.asList(host, "$port"))
+                .setAddress(config.getJsonObject("check").getString("host"))
+                .setPort(port)
+                .setCheckOptions(CheckOptions()
+                        .setDeregisterAfter("120s")
+                        .setInterval(config.getJsonObject("check").getString("interval", "10s"))
+                        .setHttp(checkHttp))
 
         log.info("Registering checkpoint at ${options.checkOptions.http}")
 
