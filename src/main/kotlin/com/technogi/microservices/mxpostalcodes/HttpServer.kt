@@ -38,7 +38,6 @@ class HttpServer : AbstractVerticle() {
 
         log.info("Loaded ${data.size} registers")
 
-
         val httpServer = vertx.createHttpServer()
         val router = Router.router(vertx)
 
