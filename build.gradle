@@ -28,7 +28,7 @@ apply plugin: 'docker'
 apply from: 'gradle/docker.gradle'
 
 group 'com.technogi.microservices'
-version = '0.0.3'
+version = '0.0.4'
 sourceCompatibility = '1.8'
 
 mainClassName = 'io.vertx.core.Launcher'
