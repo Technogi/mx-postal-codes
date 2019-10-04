@@ -21,7 +21,8 @@ object DataLoader {
                                             data[Location.ESTADO],
                                             data[Location.CIUDAD],
                                             data[Location.ID_ESTADO],
-                                            data[Location.ID_MUNICIPIO]))
+                                            data[Location.ID_MUNICIPIO],
+                                            data[Location.ID_CIUDAD]))
 
                             if (codesMap.containsKey(cp)) {
                                 val oldVal = codesMap.get(cp)
